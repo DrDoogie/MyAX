@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.myax.meetingrecorder</string>
+    <key>CFBundleName</key>
+    <string>회의록</string>
+    <key>CFBundleDisplayName</key>
+    <string>회의록</string>
+    <key>CFBundleExecutable</key>
+    <string>MeetingRecorder</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- 권한 설명 (macOS 시스템 다이얼로그에 표시) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>회의 녹음을 위해 마이크 접근이 필요합니다. 녹음 파일은 이 기기에만 저장됩니다.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>녹음된 내용을 텍스트로 변환하기 위해 음성 인식이 필요합니다.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>회의록을 Apple 메모 앱에 저장하기 위해 사용됩니다.</string>
+
+    <!-- 앱 샌드박스 비활성화 (AppleScript로 Notes 접근 필요) -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+</dict>
+</plist>
