@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>회의 녹음을 위해 마이크 접근이 필요합니다. 녹음된 파일은 기기에만 저장됩니다.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>녹음된 회의 내용을 텍스트로 변환하기 위해 음성 인식이 필요합니다. 가능한 경우 기기 내에서만 처리됩니다.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>회의록을 Apple 메모 앱에 저장하기 위해 사용됩니다.</string>
+    <key>CFBundleDisplayName</key>
+    <string>회의록</string>
+</dict>
+</plist>
