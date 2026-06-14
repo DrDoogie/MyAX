@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>주차 등록</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#111;padding:16px;max-width:480px;margin:auto}
+h1{font-size:20px;font-weight:600;margin:12px 0 16px}
+.list{border:1px solid #e0e0e0;border-radius:12px;overflow:hidden;margin-bottom:16px;background:#fff}
+.item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f0f0f0;background:#fff}
+.item:last-child{border-bottom:none}
+.item-info{flex:1}
+.item-name{font-size:15px;font-weight:600}
+.item-car{font-size:13px;color:#888;margin-top:2px}
+.toggle{position:relative;width:44px;height:26px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:#ccc;border-radius:13px;cursor:pointer;transition:.2s}
+.slider:before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+input:checked+.slider{background:#2563eb}
+input:checked+.slider:before{transform:translateX(18px)}
+.del-btn{background:none;border:none;color:#bbb;cursor:pointer;font-size:20px;padding:4px;line-height:1}
+.add-row{display:flex;gap:8px;margin-bottom:16px}
+.add-row input{flex:1;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;background:#fff;color:#111}
+.add-row button{padding:9px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap;font-weight:500}
+.label{font-size:13px;font-weight:600;color:#555;margin-bottom:6px}
+.msg-box{border:1px solid #e0e0e0;border-radius:12px;padding:12px 16px;background:#f9f9f9;min-height:90px;font-size:14px;line-height:1.7;margin-bottom:10px;white-space:pre-wrap;color:#111}
+.copy-btn{width:100%;padding:11px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600}
+.copy-btn.done{background:#16a34a}
+</style>
+</head>
+<body>
+<h1>주차 등록</h1>
+<div class="list" id="list"></div>
+<div class="add-row">
+  <input id="inp-name" placeholder="이름" />
+  <input id="inp-car" placeholder="차량번호" />
+  <button onclick="addPerson()">추가</button>
+</div>
+<div class="label">생성된 메시지</div>
+<div class="msg-box" id="msg-box"></div>
+<button class="copy-btn" id="copy-btn" onclick="copyMsg()">메시지 복사</button>
+
+<script>
+var DEFAULT_PEOPLE = [
+  {id:1, name:"김용태", car:"97우0842",  parked:false},
+  {id:2, name:"임정규", car:"372누9863", parked:false},
+  {id:3, name:"안재윤", car:"42루4498",  parked:false},
+  {id:4, name:"신영환", car:"14보9819",  parked:false},
+  {id:5, name:"한상현", car:"62소4078",  parked:false},
+  {id:6, name:"채연정", car:"13도1214",  parked:false},
+  {id:7, name:"이영록", car:"177호2435", parked:false}
+];
+
+var people = [];
+var nextId = 8;
+
+function loadData() {
+  try {
+    var saved = localStorage.getItem('parking_people');
+    if (saved) {
+      people = JSON.parse(saved);
+      var maxId = 0;
+      for (var i = 0; i < people.length; i++) {
+        if (people[i].id > maxId) maxId = people[i].id;
+      }
+      nextId = maxId + 1;
+    } else {
+      people = JSON.parse(JSON.stringify(DEFAULT_PEOPLE));
+    }
+  } catch(e) {
+    people = JSON.parse(JSON.stringify(DEFAULT_PEOPLE));
+  }
+}
+
+function saveData() {
+  try { localStorage.setItem('parking_people', JSON.stringify(people)); } catch(e) {}
+}
+
+function render() {
+  var list = document.getElementById('list');
+  if (people.length === 0) {
+    list.innerHTML = '<div class="item"><div class="item-info" style="color:#aaa;font-size:14px">등록된 인원이 없습니다</div></div>';
+  } else {
+    list.innerHTML = people.map(function(p) {
+      return '<div class="item">' +
+        '<div class="item-info">' +
+          '<div class="item-name">' + p.name + '</div>' +
+          '<div class="item-car">' + p.car + '</div>' +
+        '</div>' +
+        '<label class="toggle">' +
+          '<input type="checkbox" ' + (p.parked ? 'checked' : '') + ' onchange="toggle(' + p.id + ')">' +
+          '<span class="slider"></span>' +
+        '</label>' +
+        '<button class="del-btn" onclick="del(' + p.id + ')" aria-label="삭제">×</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  var parked = [];
+  for (var i = 0; i < people.length; i++) {
+    if (people[i].parked) parked.push(people[i].car);
+  }
+  var msg = parked.length === 0
+    ? '주차 등록 차량 없음'
+    : '주차 등록 부탁드립니다.\n' + parked.join('\n');
+  document.getElementById('msg-box').textContent = msg;
+}
+
+function toggle(id) {
+  for (var i = 0; i < people.length; i++) {
+    if (people[i].id === id) { people[i].parked = !people[i].parked; break; }
+  }
+  saveData();
+  render();
+}
+
+function del(id) {
+  people = people.filter(function(x) { return x.id !== id; });
+  saveData();
+  render();
+}
+
+function addPerson() {
+  var name = document.getElementById('inp-name').value.trim();
+  var car  = document.getElementById('inp-car').value.trim();
+  if (!name || !car) return;
+  people.push({id: nextId++, name: name, car: car, parked: false});
+  document.getElementById('inp-name').value = '';
+  document.getElementById('inp-car').value  = '';
+  saveData();
+  render();
+}
+
+function copyMsg() {
+  var msg = document.getElementById('msg-box').textContent;
+  var btn = document.getElementById('copy-btn');
+  function markDone() {
+    btn.textContent = '복사 완료 ✓';
+    btn.className = 'copy-btn done';
+    setTimeout(function() { btn.textContent = '메시지 복사'; btn.className = 'copy-btn'; }, 2000);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(msg).then(markDone).catch(function() { fallbackCopy(msg); markDone(); });
+  } else {
+    fallbackCopy(msg); markDone();
+  }
+}
+
+function fallbackCopy(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+}
+
+loadData();
+render();
+</script>
+</body>
+</html>
