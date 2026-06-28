@@ -189,8 +189,15 @@ struct SettingsView: View {
     @State private var showKey = false
     @State private var saved = false
 
+    // Obsidian
+    private let vaultService = ObsidianVaultService()
+    @State private var showVaultPicker = false
+    @State private var vaultSubpath = ""
+    @State private var vaultConnected = false
+
     var body: some View {
         Form {
+            // ── API Key ───────────────────────────────────
             Section {
                 HStack {
                     if showKey {
@@ -223,13 +230,56 @@ struct SettingsView: View {
                         }
                     }
                 }
-
             } header: {
                 Text("Anthropic API 키")
             } footer: {
                 Text("api.anthropic.com에서 발급. Keychain에 안전하게 저장됩니다.")
             }
 
+            // ── Obsidian Vault ────────────────────────────
+            Section {
+                if vaultConnected {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("볼트 연결됨").font(.body)
+                            if !vaultService.displayPath.isEmpty {
+                                Text(vaultService.displayPath)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    } icon: {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                } else {
+                    Label("볼트 미연결", systemImage: "xmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+
+                Button {
+                    showVaultPicker = true
+                } label: {
+                    Label("볼트 폴더 선택", systemImage: "folder.badge.plus")
+                }
+
+                HStack {
+                    Text("하위 경로")
+                    Spacer()
+                    TextField("예: MyVault", text: $vaultSubpath)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: vaultSubpath) { _, v in vaultService.subpath = v }
+                }
+            } header: {
+                Text("Obsidian 볼트 (주간 서머리)")
+            } footer: {
+                Text("iCloud Drive → Obsidian 앱 폴더를 선택하세요. 필요시 그 안의 특정 볼트 폴더 이름을 하위 경로에 입력합니다.")
+            }
+
+            // ── Privacy ───────────────────────────────────
             Section("개인정보 보호") {
                 Label("녹음 파일: 기기에만 저장", systemImage: "lock.fill")
                 Label("음성 인식: 기기 내 처리 우선", systemImage: "iphone")
@@ -243,5 +293,19 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("설정")
+        .onAppear {
+            vaultSubpath = vaultService.subpath
+            vaultConnected = (vaultService.resolvedVaultURL() != nil)
+        }
+        .fileImporter(
+            isPresented: $showVaultPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                vaultService.saveVaultFolder(url)
+                vaultConnected = (vaultService.resolvedVaultURL() != nil)
+            }
+        }
     }
 }

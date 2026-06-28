@@ -21,6 +21,8 @@
     <string>회의 녹음을 위해 마이크 접근이 필요합니다. 녹음 파일은 이 기기에만 저장됩니다.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>녹음 내용을 텍스트로 변환하기 위해 음성 인식이 필요합니다.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Obsidian 볼트 폴더를 읽어 주간 서머리를 생성합니다.</string>
 
     <!-- 배경 오디오 (앱이 백그라운드에서도 녹음 지속) -->
     <key>UIBackgroundModes</key>

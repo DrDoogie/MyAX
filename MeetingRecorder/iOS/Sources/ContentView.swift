@@ -51,8 +51,13 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: HistoryView(storage: vm.storage)) {
-                        Image(systemName: "doc.text.below.ecg")
+                    HStack(spacing: 4) {
+                        NavigationLink(destination: WeeklySummaryView()) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                        }
+                        NavigationLink(destination: HistoryView(storage: vm.storage)) {
+                            Image(systemName: "doc.text.below.ecg")
+                        }
                     }
                 }
                 ToolbarItem(placement: .topBarLeading) {
