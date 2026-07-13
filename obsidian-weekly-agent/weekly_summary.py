@@ -137,14 +137,20 @@ def summarize_with_claude(notes: list[dict], start: date, end: date) -> str:
 # ---------------------------------------------------------------------------
 
 def save_summary(summary: str, vault: Path, start: date) -> Path:
+    from datetime import datetime
     year, week_num, _ = start.isocalendar()
     summaries_dir = vault / SUMMARIES_DIR_NAME
     summaries_dir.mkdir(parents=True, exist_ok=True)
-    out_file = summaries_dir / f"{year}-W{week_num:02d}_weekly_summary.md"
+
+    base = f"{year}-W{week_num:02d}_weekly_summary"
+    out_file = summaries_dir / f"{base}.md"
+    if out_file.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_file = summaries_dir / f"{base}_{timestamp}.md"
 
     header = (
         f"# 주간 요약 {year}-W{week_num:02d}\n"
-        f"생성일: {date.today().strftime('%Y-%m-%d')}\n\n"
+        f"생성일: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
     )
     out_file.write_text(header + summary, encoding="utf-8")
     return out_file
