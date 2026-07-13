@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
 Obsidian Weekly Summary Generator
-Reads this week's Obsidian notes, summarizes them by date and meeting,
-saves the summary as Markdown in WeeklySummaries/, and reads it aloud via `say`.
+
+로컬(Mac): python weekly_summary.py [--week N] [--year YYYY]
+GitHub Actions: python weekly_summary.py --no-tts --git-dates [--week N]
 """
 
 import argparse
 import os
 import subprocess
 import sys
-from datetime import date, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import anthropic
@@ -23,30 +25,30 @@ SUMMARIES_DIR_NAME = "WeeklySummaries"
 
 MEETING_KEYWORDS = {"회의", "meeting", "미팅", "mtg", "standup", "스탠드업", "1on1", "원온원"}
 
-
 # ---------------------------------------------------------------------------
-# Note discovery
+# Week range
 # ---------------------------------------------------------------------------
 
 def get_week_range(week: int | None = None, year: int | None = None) -> tuple[date, date]:
     if week is not None:
         y = year or date.today().isocalendar()[0]
-        # ISO week: Jan 4 is always in week 1
         jan4 = date(y, 1, 4)
         week1_monday = jan4 - timedelta(days=jan4.weekday())
         start = week1_monday + timedelta(weeks=week - 1)
     else:
         today = date.today()
-        start = today - timedelta(days=today.weekday())  # Monday
-    end = start + timedelta(days=6)  # Sunday
+        start = today - timedelta(days=today.weekday())
+    end = start + timedelta(days=6)
     return start, end
 
+# ---------------------------------------------------------------------------
+# Note discovery — two modes
+# ---------------------------------------------------------------------------
 
-def collect_notes(vault: Path, start: date, end: date) -> list[dict]:
-    """Return list of {path, date, content} for notes modified this week."""
+def collect_notes_mtime(vault: Path, start: date, end: date) -> list[dict]:
+    """Local mode: use filesystem mtime to filter notes."""
     notes = []
     for md_file in vault.rglob("*.md"):
-        # Skip WeeklySummaries output folder to avoid recursion
         if SUMMARIES_DIR_NAME in md_file.parts:
             continue
         mtime = date.fromtimestamp(md_file.stat().st_mtime)
@@ -60,11 +62,61 @@ def collect_notes(vault: Path, start: date, end: date) -> list[dict]:
     return notes
 
 
+def collect_notes_git(vault: Path, start: date, end: date) -> list[dict]:
+    """CI mode: use git log to determine when each note was last changed."""
+    since = start.isoformat()
+    until = (end + timedelta(days=1)).isoformat()
+
+    # Find all .md files committed/modified in the target window
+    result = subprocess.run(
+        [
+            "git", "log",
+            f"--since={since}", f"--until={until}",
+            "--name-only", "--format=", "--diff-filter=AM", "--", "*.md",
+        ],
+        capture_output=True, text=True, cwd=vault,
+    )
+
+    seen: set[str] = set()
+    notes = []
+    for line in result.stdout.splitlines():
+        rel = line.strip()
+        if not rel or rel in seen:
+            continue
+        seen.add(rel)
+
+        md_file = vault / rel
+        if SUMMARIES_DIR_NAME in md_file.parts or not md_file.exists():
+            continue
+
+        # Get the exact commit date within the window for this file
+        date_result = subprocess.run(
+            ["git", "log", "-1", f"--since={since}", f"--until={until}",
+             "--format=%ci", "--", rel],
+            capture_output=True, text=True, cwd=vault,
+        )
+        note_date = start
+        if date_result.stdout.strip():
+            note_date = date.fromisoformat(date_result.stdout.strip()[:10])
+
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        notes.append({"path": md_file, "date": note_date, "content": content})
+
+    notes.sort(key=lambda n: (n["date"], n["path"].name))
+    return notes
+
+
+def collect_notes(vault: Path, start: date, end: date, use_git: bool = False) -> list[dict]:
+    return collect_notes_git(vault, start, end) if use_git else collect_notes_mtime(vault, start, end)
+
+
 def is_meeting_note(note: dict) -> bool:
     name_lower = note["path"].name.lower()
     content_lower = note["content"][:500].lower()
     return any(kw in name_lower or kw in content_lower for kw in MEETING_KEYWORDS)
-
 
 # ---------------------------------------------------------------------------
 # Claude API summarization
@@ -76,8 +128,6 @@ WEEKDAY_KR = {0: "월요일", 1: "화요일", 2: "수요일", 3: "목요일", 4:
 def build_prompt(notes: list[dict], start: date, end: date) -> str:
     week_label = f"{start.strftime('%Y년 %-m월 %-d일')} ~ {end.strftime('%-m월 %-d일')}"
 
-    # Group notes by date
-    from collections import defaultdict
     by_date: dict[date, list[dict]] = defaultdict(list)
     for note in notes:
         by_date[note["date"]].append(note)
@@ -85,14 +135,11 @@ def build_prompt(notes: list[dict], start: date, end: date) -> str:
     sections = []
     for day, day_notes in sorted(by_date.items()):
         day_label = f"{day.strftime('%-m월 %-d일')}({WEEKDAY_KR[day.weekday()]})"
-        note_texts = "\n".join(
-            f"[{n['path'].stem}]\n{n['content']}" for n in day_notes
-        )
+        note_texts = "\n".join(f"[{n['path'].stem}]\n{n['content']}" for n in day_notes)
         sections.append(f"--- {day_label} ---\n{note_texts}")
 
     combined = "\n\n".join(sections)
     num_days = len(by_date)
-    # Target ~1,500 chars total for ~5 min speech; allocate evenly per day
     chars_per_day = max(150, 1500 // max(num_days, 1))
 
     return f"""당신은 팀 브리핑 스피치 작성 전문가입니다.
@@ -130,22 +177,16 @@ def summarize_with_claude(notes: list[dict], start: date, end: date) -> str:
             print(text, end="", flush=True)
         message = stream.get_final_message()
 
-    print()  # newline after streaming output
+    print()
 
-    # Extract text blocks only (skip thinking blocks)
-    parts = []
-    for block in message.content:
-        if block.type == "text":
-            parts.append(block.text)
+    parts = [block.text for block in message.content if block.type == "text"]
     return "\n".join(parts)
-
 
 # ---------------------------------------------------------------------------
 # File output
 # ---------------------------------------------------------------------------
 
 def save_summary(summary: str, vault: Path, start: date) -> Path:
-    from datetime import datetime
     year, week_num, _ = start.isocalendar()
     summaries_dir = vault / SUMMARIES_DIR_NAME
     summaries_dir.mkdir(parents=True, exist_ok=True)
@@ -163,9 +204,8 @@ def save_summary(summary: str, vault: Path, start: date) -> Path:
     out_file.write_text(header + summary, encoding="utf-8")
     return out_file
 
-
 # ---------------------------------------------------------------------------
-# Text-to-speech
+# Text-to-speech (Mac only)
 # ---------------------------------------------------------------------------
 
 def speak_summary(summary: str) -> None:
@@ -177,7 +217,6 @@ def speak_summary(summary: str) -> None:
     except FileNotFoundError:
         print("(say 명령어를 찾을 수 없습니다. macOS에서 실행해 주세요.)")
 
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -186,6 +225,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Obsidian 주간 요약 생성기")
     parser.add_argument("--week", type=int, help="ISO 주차 번호 (기본: 이번 주)")
     parser.add_argument("--year", type=int, help="연도 (--week 사용 시 선택; 기본: 올해)")
+    parser.add_argument("--no-tts", action="store_true", help="say 명령어 실행 건너뜀 (CI/서버용)")
+    parser.add_argument("--git-dates", action="store_true", help="파일 mtime 대신 git log로 날짜 판별 (CI용)")
     args = parser.parse_args()
 
     start, end = get_week_range(week=args.week, year=args.year)
@@ -198,10 +239,10 @@ def main() -> None:
         sys.exit(1)
 
     print(f"볼트 경로: {VAULT_PATH}")
-    notes = collect_notes(VAULT_PATH, start, end)
+    notes = collect_notes(VAULT_PATH, start, end, use_git=args.git_dates)
 
     if not notes:
-        print("이번 주에 작성된 노트가 없습니다.")
+        print("해당 주에 작성된 노트가 없습니다.")
         sys.exit(0)
 
     meeting_notes = [n for n in notes if is_meeting_note(n)]
@@ -212,8 +253,9 @@ def main() -> None:
     out_file = save_summary(summary, VAULT_PATH, start)
     print(f"\n요약 저장 완료: {out_file}")
 
-    print("\n요약을 읽어드립니다...")
-    speak_summary(summary)
+    if not args.no_tts:
+        print("\n요약을 읽어드립니다...")
+        speak_summary(summary)
 
 
 if __name__ == "__main__":

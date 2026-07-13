@@ -1,0 +1,82 @@
+name: Obsidian 주간 요약
+
+on:
+  # 아이패드 GitHub 앱 또는 웹에서 수동 실행
+  workflow_dispatch:
+    inputs:
+      week:
+        description: '주차 번호 (비워두면 이번 주)'
+        required: false
+        type: string
+      vault_repo:
+        description: 'Obsidian 볼트 레포 (비워두면 이 레포 사용, 예: yourname/obsidian-vault)'
+        required: false
+        type: string
+
+  # 매주 금요일 오후 6시 (KST = UTC+9, 즉 UTC 09:00)
+  schedule:
+    - cron: '0 9 * * 5'
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 이 레포 체크아웃 (스크립트)
+        uses: actions/checkout@v4
+        with:
+          path: script-repo
+
+      - name: Obsidian 볼트 체크아웃
+        uses: actions/checkout@v4
+        with:
+          # vault_repo 입력이 있으면 그 레포를, 없으면 이 레포를 볼트로 사용
+          repository: ${{ inputs.vault_repo || github.repository }}
+          token: ${{ secrets.VAULT_TOKEN || secrets.GITHUB_TOKEN }}
+          path: vault
+          fetch-depth: 0  # git log 날짜 조회에 전체 히스토리 필요
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 의존성 설치
+        run: pip install anthropic
+
+      - name: 주간 요약 생성
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OBSIDIAN_VAULT: ${{ github.workspace }}/vault
+        run: |
+          ARGS="--no-tts --git-dates"
+          if [ -n "${{ inputs.week }}" ]; then
+            ARGS="$ARGS --week ${{ inputs.week }}"
+          fi
+          python script-repo/obsidian-weekly-agent/weekly_summary.py $ARGS
+
+      - name: 요약 파일 커밋 & 푸시
+        working-directory: vault
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add WeeklySummaries/
+          if git diff --staged --quiet; then
+            echo "변경사항 없음 — 새로 생성된 요약 없음"
+          else
+            WEEK_NUM=$(python -c "
+          from datetime import date, timedelta
+          w = '${{ inputs.week }}'
+          if w:
+              today = date.today()
+              jan4 = date(today.year, 1, 4)
+              m = jan4 - timedelta(days=jan4.weekday())
+              start = m + timedelta(weeks=int(w)-1)
+              print(start.isocalendar()[1])
+          else:
+              print(date.today().isocalendar()[1])
+          ")
+            git commit -m "chore: $(date +'%Y')-W${WEEK_NUM} 주간 요약 추가"
+            git push
+            echo "✅ 요약 파일 저장 완료 — Obsidian Git으로 자동 동기화됩니다"
+          fi
