@@ -62,36 +62,48 @@ def is_meeting_note(note: dict) -> bool:
 # Claude API summarization
 # ---------------------------------------------------------------------------
 
+WEEKDAY_KR = {0: "월요일", 1: "화요일", 2: "수요일", 3: "목요일", 4: "금요일", 5: "토요일", 6: "일요일"}
+
+
 def build_prompt(notes: list[dict], start: date, end: date) -> str:
-    week_label = f"{start.strftime('%Y-%m-%d')} ~ {end.strftime('%Y-%m-%d')}"
-    sections = []
+    week_label = f"{start.strftime('%Y년 %-m월 %-d일')} ~ {end.strftime('%-m월 %-d일')}"
+
+    # Group notes by date
+    from collections import defaultdict
+    by_date: dict[date, list[dict]] = defaultdict(list)
     for note in notes:
-        sections.append(
-            f"=== [{note['date'].strftime('%Y-%m-%d')}] {note['path'].stem} ===\n{note['content']}"
+        by_date[note["date"]].append(note)
+
+    sections = []
+    for day, day_notes in sorted(by_date.items()):
+        day_label = f"{day.strftime('%-m월 %-d일')}({WEEKDAY_KR[day.weekday()]})"
+        note_texts = "\n".join(
+            f"[{n['path'].stem}]\n{n['content']}" for n in day_notes
         )
+        sections.append(f"--- {day_label} ---\n{note_texts}")
+
     combined = "\n\n".join(sections)
+    num_days = len(by_date)
+    # Target ~1,500 chars total for ~5 min speech; allocate evenly per day
+    chars_per_day = max(150, 1500 // max(num_days, 1))
 
-    return f"""You are a concise and insightful note summarizer. Below are all Obsidian notes from the week of {week_label}.
+    return f"""당신은 팀 브리핑 스피치 작성 전문가입니다.
+아래는 {week_label} 한 주간의 업무 노트입니다.
 
-Please produce a structured weekly summary in Korean with the following sections:
+다음 조건을 엄수하여 브리핑 스크립트를 작성하세요:
 
-## 📅 날짜별 요약 (Daily Summary)
-Summarize the key topics, tasks, and ideas for each date that has notes.
-
-## 🗣️ 회의별 요약 (Meeting Summary)
-For each meeting note found, write a brief summary covering purpose, key decisions, and action items.
-If no meeting notes were found, state that.
-
-## ✅ 주요 액션 아이템 (Key Action Items)
-Bullet list of the most important follow-ups and tasks from the entire week.
-
-## 💡 주간 인사이트 (Weekly Insights)
-2–3 sentences synthesizing the overall theme or learnings of the week.
+1. **출력 형식**: 말로 읽히는 자연스러운 한국어 산문(prose). 마크다운 헤더(#), 불릿(-,*), 번호 목록 금지.
+2. **구조**: 날짜 순서대로 하루씩 이어지는 하나의 연속된 단락. 날짜 전환 시 "다음으로 X월 Y일에는," 처럼 자연스럽게 연결.
+3. **분량**: 전체 약 1,500자 이내 (날짜당 약 {chars_per_day}자). 절대 이를 초과하지 마세요.
+4. **마무리**: 마지막 날짜 요약 후 단 한 번 짧게 마무리. "덧붙이자면", "또한", "이 외에도" 등으로 이미 끝난 뒤 다시 시작하지 마세요.
+5. **내용**: 각 날짜의 핵심 이슈 1~2개만 간결하게. 회의 내용은 날짜 안에 녹여서 별도 섹션 없이 서술.
+6. **톤**: 팀 전체에게 브리핑하는 차분하고 명확한 어조.
 
 ---
-NOTES:
 {combined}
-"""
+---
+
+위 노트를 바탕으로 브리핑 스크립트를 작성하세요. 조건을 어기면 안 됩니다."""
 
 
 def summarize_with_claude(notes: list[dict], start: date, end: date) -> str:
@@ -143,12 +155,9 @@ def save_summary(summary: str, vault: Path, start: date) -> Path:
 # ---------------------------------------------------------------------------
 
 def speak_summary(summary: str) -> None:
-    # Strip markdown syntax for cleaner speech
     import re
-    plain = re.sub(r"[#*`_\[\]()]", "", summary)
-    plain = re.sub(r"\n{2,}", "\n", plain).strip()
-    # Limit to first ~2000 chars to keep TTS duration reasonable
-    plain = plain[:2000]
+    plain = re.sub(r"[#*`_\[\]()\-]", "", summary)
+    plain = re.sub(r"\n{2,}", " ", plain).strip()
     try:
         subprocess.run(["say", "-v", "Yuna", plain], check=False)
     except FileNotFoundError:
