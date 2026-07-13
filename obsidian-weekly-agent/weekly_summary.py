@@ -5,6 +5,7 @@ Reads this week's Obsidian notes, summarizes them by date and meeting,
 saves the summary as Markdown in WeeklySummaries/, and reads it aloud via `say`.
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -27,10 +28,17 @@ MEETING_KEYWORDS = {"회의", "meeting", "미팅", "mtg", "standup", "스탠드�
 # Note discovery
 # ---------------------------------------------------------------------------
 
-def get_week_range() -> tuple[date, date]:
-    today = date.today()
-    start = today - timedelta(days=today.weekday())  # Monday
-    end = start + timedelta(days=6)                  # Sunday
+def get_week_range(week: int | None = None, year: int | None = None) -> tuple[date, date]:
+    if week is not None:
+        y = year or date.today().isocalendar()[0]
+        # ISO week: Jan 4 is always in week 1
+        jan4 = date(y, 1, 4)
+        week1_monday = jan4 - timedelta(days=jan4.weekday())
+        start = week1_monday + timedelta(weeks=week - 1)
+    else:
+        today = date.today()
+        start = today - timedelta(days=today.weekday())  # Monday
+    end = start + timedelta(days=6)  # Sunday
     return start, end
 
 
@@ -175,8 +183,14 @@ def speak_summary(summary: str) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    start, end = get_week_range()
-    print(f"이번 주 범위: {start} ~ {end}")
+    parser = argparse.ArgumentParser(description="Obsidian 주간 요약 생성기")
+    parser.add_argument("--week", type=int, help="ISO 주차 번호 (기본: 이번 주)")
+    parser.add_argument("--year", type=int, help="연도 (--week 사용 시 선택; 기본: 올해)")
+    args = parser.parse_args()
+
+    start, end = get_week_range(week=args.week, year=args.year)
+    _, week_num, _ = start.isocalendar()
+    print(f"대상 주차: {week_num}주차 ({start} ~ {end})")
 
     if not VAULT_PATH.exists():
         print(f"Obsidian 볼트를 찾을 수 없습니다: {VAULT_PATH}")
